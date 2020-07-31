@@ -1,12 +1,59 @@
-let lessonSource = process.argv[2];
-let target_dir = process.argv[3];
-let generate_beta_content = process.argv.length >= 4 && process.argv[4]=="beta";
 
-const fs = require('fs');
-let showdown = require("./showdown.js");
+let showdown = require("showdown");
+const fs = require('fs')
+const yaml = require('js-yaml');
+
+const lessonSource = process.argv[2];
+const target_dir = process.argv[3];
+const generate_beta_content = process.argv.length >= 4 && process.argv[4]=="beta";
+
+const getDirectories = source =>
+  fs.readdirSync(source, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => dirent.name)
+
+const getYaml = path => yaml.safeLoad(fs.readFileSync(path));
+
+const languages = getDirectories(lessonSource);
+const commonWords = {};
+const chapters = [];
+
+for(x in languages){
+    const lang = languages[x];
+    const langDir = lessonSource+"/"+lang;
+    commonWords[lang] = getYaml(langDir+"/common_words.yaml");
+    const languageFiles = fs.readdirSync(langDir, { withFileTypes: true })
+      .filter(f => f.isFile() && f.name.indexOf("chapter_")==0)
+      .map(f => f.name)
+    languageFiles.forEach(l=>{
+        let chap = parseInt(l.substring(8,l.indexOf(".")));
+        if(chapters[chap] == undefined){
+            chapters[chap] = {};
+        }
+        chapters[chap][lang] = getYaml(langDir+"/"+l);
+    })
+}
+
+const pages = [];
+chapters.forEach((c,x)=>{
+    for(let i = 0;i<c.en.length;i++){
+        let page = {};
+        if(i==0 && x != 0){
+            page.chapter = x;
+        }
+        Object.keys(c).forEach(lang=> {
+            page[lang] = c[lang][i];
+        })
+        pages.push(page);
+    }
+})
+
+const lessons = {
+    common_words: commonWords,
+    pages: pages,
+}
+
 converter = new showdown.Converter();
-
-let lessons = JSON.parse(fs.readFileSync(lessonSource));
 
 function getWord(words,lang,w){
     if(words[lang][w]){
@@ -40,6 +87,7 @@ function template(lessons,lang,title,code,content,index,isLast, words, is_beta){
         <link rel="preload" as="font" href="https://fonts.gstatic.com/s/neuton/v12/UMBQrPtMoH62xUZKdK0vfQr4LLkw6A.woff2"/>
         <link rel="preload" as="font" href="https://fonts.gstatic.com/s/neuton/v12/UMBTrPtMoH62xUZCz4g6UCj1Bg.woff2"/>
         <link href="https://fonts.googleapis.com/css2?family=Neuton:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;700&display=swap" rel="stylesheet">
         <title>${getWord(words,lang,"tor")} - Let's go on an adventure!</title>
         <link rel="stylesheet" href="tour.css">
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -85,8 +133,6 @@ function getFileName(lang,i,is_beta,chapter){
     }
     return fileName;
 }
-
-let languages = Object.keys(lessons.pages[0]);
 
 for(var l in languages){
     let lang = languages[l];
